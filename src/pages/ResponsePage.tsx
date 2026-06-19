@@ -35,8 +35,17 @@ import {
   Archive,
   History,
   User,
+  Bell,
 } from 'lucide-react';
 import type { ActionStatus, NodeAnnotation, SpreadNode, RiskLevel, EvidenceMaterial, MaterialKind, MaterialAvailability, ActionLog, ActionType } from '@/types';
+
+type ReminderType = 'deadline_urgent' | 'evidence_expired' | 'complaint_pending';
+
+interface Reminder {
+  type: ReminderType;
+  description: string;
+  targetId: string;
+}
 
 const annotationOptions: { value: NodeAnnotation; label: string; icon: typeof CheckCircle2; color: string; bgColor: string }[] = [
   { value: 'none', label: '未标注', icon: Tag, color: 'text-gray-500', bgColor: 'bg-gray-500/15' },
@@ -174,6 +183,61 @@ export default function ResponsePage() {
     };
   }, [suggestion]);
 
+  const reminders = useMemo((): Reminder[] => {
+    const list: Reminder[] = [];
+    if (!activeRumor || !suggestion) return list;
+
+    if (activeRumor.assignment) {
+      const now = new Date('2026-06-20T16:00:00');
+      const deadline = new Date(activeRumor.assignment.deadline.replace(' ', 'T'));
+      const diffMs = deadline.getTime() - now.getTime();
+      const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+      if (hoursLeft < 6) {
+        list.push({
+          type: 'deadline_urgent',
+          description: hoursLeft < 0 ? `已超时 ${Math.abs(hoursLeft)} 小时` : `截止时间仅剩 ${hoursLeft} 小时`,
+          targetId: 'action-progress-section',
+        });
+      }
+    }
+
+    const hasExpiredEvidence = suggestion.evidenceMaterials.some((m) => m.availability === 'expired');
+    if (hasExpiredEvidence) {
+      list.push({
+        type: 'evidence_expired',
+        description: '存在已过期的证据材料，请及时更新',
+        targetId: 'evidence-materials-section',
+      });
+    }
+
+    const hasComplaintPending = suggestion.actionItems.some(
+      (item) =>
+        item.status !== 'completed' &&
+        (item.content.includes('投诉') || item.content.includes('举报') || item.content.includes('下架'))
+    );
+    if (hasComplaintPending) {
+      const hasInProgress = suggestion.actionItems.some(
+        (item) =>
+          item.status === 'in_progress' &&
+          (item.content.includes('投诉') || item.content.includes('举报') || item.content.includes('下架'))
+      );
+      list.push({
+        type: 'complaint_pending',
+        description: '有待处理的投诉/举报相关任务',
+        targetId: hasInProgress ? 'action-in-progress-col' : 'action-pending-col',
+      });
+    }
+
+    return list;
+  }, [activeRumor, suggestion]);
+
+  const scrollToSection = (targetId: string) => {
+    const element = document.getElementById(targetId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(id);
@@ -219,6 +283,51 @@ export default function ResponsePage() {
           </div>
         </div>
       </div>
+
+      {reminders.length > 0 && (
+        <div className="glass-card p-4">
+          <h3 className="text-xs font-semibold text-white flex items-center gap-2 mb-3">
+            <Bell className="w-3.5 h-3.5 text-brand-accent" />
+            协同提醒
+            <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-brand-accent/20 text-brand-accent text-[10px] font-bold">
+              {reminders.length}
+            </span>
+          </h3>
+          <div className="space-y-2">
+            {reminders.map((reminder, idx) => {
+              const typeConfig = {
+                deadline_urgent: { icon: Clock, color: 'text-brand-accent', bgColor: 'bg-brand-accent/10', borderColor: 'border-brand-accent/20', label: '截止临近' },
+                evidence_expired: { icon: AlertTriangle, color: 'text-brand-amber', bgColor: 'bg-brand-amber/10', borderColor: 'border-brand-amber/20', label: '证据过期' },
+                complaint_pending: { icon: MessageSquareWarning, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/20', label: '投诉待办' },
+              };
+              const config = typeConfig[reminder.type];
+              const Icon = config.icon;
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center justify-between p-2.5 rounded-lg border ${config.bgColor} ${config.borderColor}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-7 h-7 rounded-full ${config.bgColor} flex items-center justify-center shrink-0`}>
+                      <Icon className={`w-3.5 h-3.5 ${config.color}`} />
+                    </div>
+                    <div>
+                      <p className={`text-[11px] font-medium ${config.color}`}>{config.label}</p>
+                      <p className="text-[11px] text-gray-400">{reminder.description}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => scrollToSection(reminder.targetId)}
+                    className={`px-2.5 py-1 rounded text-[11px] font-medium ${config.bgColor} ${config.color} hover:opacity-80 transition-opacity`}
+                  >
+                    去处理
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {activeRumor && (
         <div className="glass-card p-4">
@@ -413,7 +522,7 @@ export default function ResponsePage() {
             </p>
           </div>
 
-          <div className="glass-card p-5">
+          <div id="evidence-materials-section" className="glass-card p-5">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
               <FileText className="w-4 h-4 text-brand-green" />
               证据材料（与传播节点双向关联）
@@ -555,7 +664,7 @@ export default function ResponsePage() {
             </div>
           </div>
 
-          <div className="glass-card p-5">
+          <div id="action-progress-section" className="glass-card p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-brand-accent" />
@@ -589,9 +698,10 @@ export default function ResponsePage() {
                 const config = statusConfig[status];
                 const Icon = config.icon;
                 const items = suggestion.actionItems.filter((i) => i.status === status);
+                const colId = status === 'pending' ? 'action-pending-col' : status === 'in_progress' ? 'action-in-progress-col' : '';
 
                 return (
-                  <div key={status} className="space-y-2">
+                  <div key={status} id={colId} className="space-y-2">
                     <div className="flex items-center gap-1.5 mb-2">
                       <Icon className={`w-3.5 h-3.5 ${config.color}`} />
                       <span className={`text-xs font-medium ${config.color}`}>{config.label}</span>

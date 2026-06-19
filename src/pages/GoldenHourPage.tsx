@@ -23,6 +23,10 @@ import {
   Save,
   Plus,
   Minus,
+  Bell,
+  MessageSquareWarning,
+  Flag,
+  ChevronDown,
 } from 'lucide-react';
 import type { RumorClue, RiskLevel, TaskAssignment, CollaboratorRole, Collaborator } from '@/types';
 
@@ -115,6 +119,15 @@ function isUrgentDeadline(clue: RumorClue): boolean {
   return hoursLeft < 6;
 }
 
+type ReminderType = 'deadline_urgent' | 'evidence_expired' | 'complaint_pending';
+
+interface Reminder {
+  type: ReminderType;
+  rumorId: string;
+  rumorSummary: string;
+  description: string;
+}
+
 export default function GoldenHourPage() {
   const navigate = useNavigate();
   const { rumorClues, responseSuggestions, brands, teamMembers, assignRumorTask, updateRumorCurrentStep } = useAppStore();
@@ -129,6 +142,61 @@ export default function GoldenHourPage() {
   } | null>(null);
   const [newCollaboratorMemberId, setNewCollaboratorMemberId] = useState<string>('');
   const [newCollaboratorRole, setNewCollaboratorRole] = useState<CollaboratorRole>('evidence');
+  const [remindersExpanded, setRemindersExpanded] = useState(false);
+
+  const reminders = useMemo((): Reminder[] => {
+    const list: Reminder[] = [];
+    rumorClues.forEach((clue) => {
+      const suggestion = responseSuggestions[clue.id];
+      if (!suggestion) return;
+
+      if (clue.assignment) {
+        const hoursLeft = getHoursUntilDeadline(clue.assignment.deadline);
+        if (hoursLeft < 6) {
+          list.push({
+            type: 'deadline_urgent',
+            rumorId: clue.id,
+            rumorSummary: clue.summary,
+            description: hoursLeft < 0 ? `已超时 ${formatTimePassed(-hoursLeft)}` : `截止时间仅剩 ${formatTimePassed(hoursLeft)}`,
+          });
+        }
+      }
+
+      const hasExpiredEvidence = suggestion.evidenceMaterials.some((m) => m.availability === 'expired');
+      if (hasExpiredEvidence) {
+        list.push({
+          type: 'evidence_expired',
+          rumorId: clue.id,
+          rumorSummary: clue.summary,
+          description: '存在已过期的证据材料',
+        });
+      }
+
+      const hasComplaintPending = suggestion.actionItems.some(
+        (item) =>
+          item.status !== 'completed' &&
+          (item.content.includes('投诉') || item.content.includes('举报') || item.content.includes('下架'))
+      );
+      if (hasComplaintPending) {
+        list.push({
+          type: 'complaint_pending',
+          rumorId: clue.id,
+          rumorSummary: clue.summary,
+          description: '有待处理的投诉/举报相关任务',
+        });
+      }
+    });
+    return list;
+  }, [rumorClues, responseSuggestions]);
+
+  const reminderCounts = useMemo(() => {
+    return {
+      deadline_urgent: reminders.filter((r) => r.type === 'deadline_urgent').length,
+      evidence_expired: reminders.filter((r) => r.type === 'evidence_expired').length,
+      complaint_pending: reminders.filter((r) => r.type === 'complaint_pending').length,
+      total: reminders.length,
+    };
+  }, [reminders]);
 
   const sortedClues = useMemo(() => {
     let filtered = rumorClues;
@@ -318,6 +386,82 @@ export default function GoldenHourPage() {
           </div>
         </div>
       </div>
+
+      {reminderCounts.total > 0 && (
+        <div className="glass-card overflow-hidden">
+          <button
+            onClick={() => setRemindersExpanded(!remindersExpanded)}
+            className="w-full flex items-center justify-between p-4 hover:bg-brand-surface/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-brand-accent/20 flex items-center justify-center">
+                <Bell className="w-4 h-4 text-brand-accent" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-medium text-white flex items-center gap-2">
+                  协同提醒
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-brand-accent/20 text-brand-accent text-[10px] font-bold">
+                    {reminderCounts.total}
+                  </span>
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  {reminderCounts.deadline_urgent > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-brand-accent/15 text-brand-accent text-[10px] font-medium">
+                      <Clock className="w-2.5 h-2.5" />
+                      截止临近 {reminderCounts.deadline_urgent}
+                    </span>
+                  )}
+                  {reminderCounts.evidence_expired > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-brand-amber/15 text-brand-amber text-[10px] font-medium">
+                      <AlertTriangle className="w-2.5 h-2.5" />
+                      证据过期 {reminderCounts.evidence_expired}
+                    </span>
+                  )}
+                  {reminderCounts.complaint_pending > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400 text-[10px] font-medium">
+                      <MessageSquareWarning className="w-2.5 h-2.5" />
+                      投诉待办 {reminderCounts.complaint_pending}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform ${remindersExpanded ? 'rotate-180' : ''}`} />
+          </button>
+          {remindersExpanded && (
+            <div className="border-t border-brand-border/30 p-3 space-y-2 max-h-[320px] overflow-y-auto">
+              {reminders.map((reminder, idx) => {
+                const typeConfig = {
+                  deadline_urgent: { icon: Clock, color: 'text-brand-accent', bgColor: 'bg-brand-accent/10', borderColor: 'border-brand-accent/20', label: '截止临近' },
+                  evidence_expired: { icon: AlertTriangle, color: 'text-brand-amber', bgColor: 'bg-brand-amber/10', borderColor: 'border-brand-amber/20', label: '证据过期' },
+                  complaint_pending: { icon: MessageSquareWarning, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/20', label: '投诉待办' },
+                };
+                const config = typeConfig[reminder.type];
+                const Icon = config.icon;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => navigate(`/response?rumorId=${reminder.rumorId}`)}
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg border ${config.bgColor} ${config.borderColor} hover:opacity-80 transition-opacity text-left`}
+                  >
+                    <div className={`w-7 h-7 rounded-full ${config.bgColor} flex items-center justify-center shrink-0`}>
+                      <Icon className={`w-3.5 h-3.5 ${config.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className={`text-[10px] font-medium ${config.color}`}>{config.label}</span>
+                      </div>
+                      <p className="text-xs text-gray-200 truncate">{reminder.rumorSummary}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{reminder.description}</p>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-6 gap-4">
         <div className="glass-card p-4 risk-high">

@@ -28,6 +28,85 @@ import {
 } from 'lucide-react';
 import type { EvidenceMaterial, MaterialKind, MaterialAvailability, RiskLevel, SpreadNode } from '@/types';
 
+type QualityLevel = 'high' | 'medium' | 'low';
+
+function evaluateMaterialQuality(material: EvidenceMaterial): { score: QualityLevel; reasons: string[] } {
+  const reasons: string[] = [];
+  let score: QualityLevel = 'medium';
+
+  if (material.availability === 'pending_upload') {
+    score = 'low';
+    reasons.push('待上传，暂不可用');
+  } else if (material.availability === 'expired') {
+    score = 'low';
+    reasons.push('已过期失效');
+  } else if (material.availability === 'archived') {
+    score = 'medium';
+    reasons.push('已归档，可查阅');
+  } else if (material.availability === 'available') {
+    if (material.kind === 'screenshot') {
+      score = 'high';
+      reasons.push('截图可用');
+    } else if (material.kind === 'link') {
+      score = 'high';
+      reasons.push('链接可访问');
+    } else if (material.kind === 'report' || material.kind === 'receipt') {
+      score = 'high';
+      reasons.push('材料齐全');
+    } else {
+      score = 'medium';
+      reasons.push('材料性质待确认');
+    }
+  } else {
+    score = 'medium';
+    reasons.push('材料性质待确认');
+  }
+
+  return { score, reasons };
+}
+
+function evaluateClueEvidence(materials: EvidenceMaterial[]): { overall: QualityLevel; missing: string[]; reasons: string[] } {
+  const hasScreenshot = materials.some((m) => m.kind === 'screenshot' && m.availability === 'available');
+  const hasLink = materials.some((m) => m.kind === 'link' && m.availability === 'available');
+  const hasReportOrReceipt = materials.some((m) => (m.kind === 'report' || m.kind === 'receipt') && m.availability === 'available');
+
+  const missing: string[] = [];
+  const reasons: string[] = [];
+
+  if (!hasScreenshot) {
+    missing.push('缺少核心传播节点截图');
+    reasons.push('缺少截图类材料');
+  } else {
+    reasons.push('有截图类材料');
+  }
+
+  if (!hasLink) {
+    missing.push('缺少原始链接');
+    reasons.push('缺少链接类材料');
+  } else {
+    reasons.push('有链接类材料');
+  }
+
+  if (!hasReportOrReceipt) {
+    missing.push('缺少官方检测/投诉材料');
+    reasons.push('缺少检测报告/投诉回执类材料');
+  } else {
+    reasons.push('有检测报告/投诉回执类材料');
+  }
+
+  let overall: QualityLevel;
+  const missingCount = missing.length;
+  if (missingCount === 0) {
+    overall = 'high';
+  } else if (missingCount === 1) {
+    overall = 'medium';
+  } else {
+    overall = 'low';
+  }
+
+  return { overall, missing, reasons };
+}
+
 const kindMeta: Record<MaterialKind, { label: string; icon: typeof Camera; color: string; bgColor: string }> = {
   screenshot: { label: '截图', icon: Camera, color: 'text-brand-green', bgColor: 'bg-brand-green/15' },
   link: { label: '链接', icon: Link2, color: 'text-blue-300', bgColor: 'bg-blue-500/15' },
@@ -132,6 +211,7 @@ export default function EvidenceLedgerPage() {
   }, [responseSuggestions]);
 
   const totalMaterials = Object.values(stats.total).reduce((a, b) => a + b, 0);
+  const overallAvailabilityRate = totalMaterials > 0 ? Math.round((stats.avail.available / totalMaterials) * 100) : 0;
 
   const jumpToNode = (rumorId: string, nodeId?: string) => {
     if (!nodeId) return;
@@ -154,7 +234,7 @@ export default function EvidenceLedgerPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-3">
+      <div className="grid grid-cols-8 gap-3">
         {(Object.keys(kindMeta) as MaterialKind[]).map((k) => {
           const meta = kindMeta[k];
           const Icon = meta.icon;
@@ -170,6 +250,15 @@ export default function EvidenceLedgerPage() {
             </div>
           );
         })}
+        <div className="glass-card p-3 col-span-1 border-l-4 border-l-brand-green">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-gray-400 inline-flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              综合可用率
+            </span>
+          </div>
+          <p className="text-xl font-bold font-mono text-brand-green">{overallAvailabilityRate}<span className="text-sm text-gray-500 font-normal">%</span></p>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-3">
@@ -265,6 +354,20 @@ export default function EvidenceLedgerPage() {
       <div className="space-y-3">
         {cluesWithMaterials.map(({ clue, materials, totalCount }) => {
           const expanded = expandedClueId === clue.id;
+          const evaluation = evaluateClueEvidence(materials);
+          const qualityColors: Record<QualityLevel, string> = {
+            high: 'bg-brand-green/20 text-brand-green',
+            medium: 'bg-brand-amber/20 text-brand-amber',
+            low: 'bg-brand-accent/20 text-brand-accent',
+          };
+          const qualityLabels: Record<QualityLevel, string> = {
+            high: '高',
+            medium: '中',
+            low: '低',
+          };
+          const hasScreenshot = materials.some((m) => m.kind === 'screenshot' && m.availability === 'available');
+          const hasLink = materials.some((m) => m.kind === 'link' && m.availability === 'available');
+          const hasReportOrReceipt = materials.some((m) => (m.kind === 'report' || m.kind === 'receipt') && m.availability === 'available');
           return (
             <div key={clue.id} className="glass-card overflow-hidden">
               <div
@@ -281,6 +384,16 @@ export default function EvidenceLedgerPage() {
                       {categoryLabels[clue.category] || clue.category}
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-brand-navy/40 text-gray-400 text-[10px]">{brandName(clue.brandId)}</span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${qualityColors[evaluation.overall]}`}>
+                      <CheckCircle2 className="w-3 h-3" />
+                      材料可用度{qualityLabels[evaluation.overall]}
+                    </span>
+                    {evaluation.missing.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-brand-amber/15 text-brand-amber text-xs font-medium">
+                        <AlertTriangle className="w-3 h-3" />
+                        缺 {evaluation.missing.length} 项关键材料
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-200 leading-relaxed truncate">{clue.summary}</p>
                 </div>
@@ -300,6 +413,42 @@ export default function EvidenceLedgerPage() {
 
               {expanded && (
                 <div className="border-t border-brand-border/30 px-4 py-3">
+                  <div className="mb-3 p-3 rounded-lg bg-brand-dark/40 border border-brand-border/30">
+                    <p className="text-xs text-gray-300 font-medium mb-2 flex items-center gap-1.5">
+                      <FileScan className="w-3.5 h-3.5 text-brand-green" />
+                      材料可用性评估
+                    </p>
+                    <div className="grid grid-cols-3 gap-3 mb-2">
+                      <div className="p-2 rounded bg-brand-surface/40 border border-brand-border/30 text-center">
+                        <p className="text-[10px] text-gray-500 mb-1">截图覆盖率</p>
+                        <p className={`text-sm font-bold ${hasScreenshot ? 'text-brand-green' : 'text-brand-accent'}`}>
+                          {hasScreenshot ? '✓ 齐全' : '✗ 缺失'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded bg-brand-surface/40 border border-brand-border/30 text-center">
+                        <p className="text-[10px] text-gray-500 mb-1">链接覆盖率</p>
+                        <p className={`text-sm font-bold ${hasLink ? 'text-brand-green' : 'text-brand-accent'}`}>
+                          {hasLink ? '✓ 齐全' : '✗ 缺失'}
+                        </p>
+                      </div>
+                      <div className="p-2 rounded bg-brand-surface/40 border border-brand-border/30 text-center">
+                        <p className="text-[10px] text-gray-500 mb-1">报告/回执齐全度</p>
+                        <p className={`text-sm font-bold ${hasReportOrReceipt ? 'text-brand-green' : 'text-brand-accent'}`}>
+                          {hasReportOrReceipt ? '✓ 齐全' : '✗ 缺失'}
+                        </p>
+                      </div>
+                    </div>
+                    {evaluation.missing.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {evaluation.missing.map((item, idx) => (
+                          <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-amber/15 text-brand-amber text-[10px] font-medium">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
