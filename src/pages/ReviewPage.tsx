@@ -1,10 +1,60 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import { nodeTypeLabels } from '@/data/mockData';
-import { GitBranch, Clock, Flame, Users, ExternalLink, ChevronDown, ArrowRight, Eye } from 'lucide-react';
+import { GitBranch, Clock, Flame, Users, ExternalLink, ChevronDown, ArrowRight, Eye, CheckCircle2, Flag, SearchX, Tag, FileDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import type { SpreadNode } from '@/types';
+import type { SpreadNode, NodeAnnotation, ActionStatus } from '@/types';
+
+const annotationOptions: { value: NodeAnnotation; label: string; icon: typeof CheckCircle2; color: string; bgColor: string }[] = [
+  { value: 'none', label: '未标注', icon: Tag, color: 'text-gray-500', bgColor: 'bg-gray-500/15' },
+  { value: 'collected', label: '已取证', icon: CheckCircle2, color: 'text-brand-green', bgColor: 'bg-brand-green/15' },
+  { value: 'reported', label: '已投诉', icon: Flag, color: 'text-brand-accent', bgColor: 'bg-brand-accent/15' },
+  { value: 'pending_verify', label: '待核验', icon: SearchX, color: 'text-brand-amber', bgColor: 'bg-brand-amber/15' },
+];
+
+function AnnotationBadge({ annotation, onClick }: { annotation: NodeAnnotation; onClick?: () => void }) {
+  const opt = annotationOptions.find((o) => o.value === annotation) || annotationOptions[0];
+  const Icon = opt.icon;
+  const clickableClass = onClick ? 'cursor-pointer hover:opacity-80' : '';
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${opt.bgColor} ${opt.color} ${clickableClass}`} onClick={onClick}>
+      <Icon className="w-2.5 h-2.5" />
+      {opt.label}
+    </span>
+  );
+}
+
+function AnnotationSelector({
+  current,
+  onChange,
+}: {
+  current: NodeAnnotation;
+  onChange: (v: NodeAnnotation) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {annotationOptions.map((opt) => {
+        const Icon = opt.icon;
+        const isActive = current === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded text-xs transition-all duration-200 border ${
+              isActive
+                ? `${opt.bgColor} ${opt.color} border-current/30 font-medium`
+                : 'bg-brand-surface/40 text-gray-400 border-brand-border/30 hover:text-gray-200'
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const nodeTypeColors: Record<string, string> = {
   small_circle: '#6366f1',
@@ -22,7 +72,17 @@ const nodeTypeBgColors: Record<string, string> = {
   official_response: 'bg-brand-green/20 border-brand-green/40',
 };
 
-function NodeDetailPanel({ node, onClose }: { node: SpreadNode; onClose: () => void }) {
+function NodeDetailPanel({
+  node,
+  rumorId,
+  onClose,
+  onUpdateAnnotation,
+}: {
+  node: SpreadNode;
+  rumorId: string;
+  onClose: () => void;
+  onUpdateAnnotation: (nodeId: string, ann: NodeAnnotation) => void;
+}) {
   return (
     <div className="fixed right-0 top-0 h-screen w-[420px] bg-brand-dark border-l border-brand-border z-50 overflow-y-auto">
       <div className="p-5">
@@ -31,11 +91,12 @@ function NodeDetailPanel({ node, onClose }: { node: SpreadNode; onClose: () => v
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-lg">×</button>
         </div>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${nodeTypeBgColors[node.nodeType]}`}>
             <GitBranch className="w-3 h-3" />
             {nodeTypeLabels[node.nodeType]}
           </span>
+          <AnnotationBadge annotation={node.annotation} />
         </div>
 
         <h4 className="text-base font-semibold text-white mb-2">{node.title}</h4>
@@ -74,6 +135,17 @@ function NodeDetailPanel({ node, onClose }: { node: SpreadNode; onClose: () => v
             <ExternalLink className="w-3 h-3" />
             查看原始链接
           </a>
+        </div>
+
+        <div className="glass-card p-4 mb-4">
+          <h5 className="text-xs font-semibold text-white flex items-center gap-1.5 mb-3">
+            <Tag className="w-3.5 h-3.5" />
+            处置标注
+          </h5>
+          <AnnotationSelector
+            current={node.annotation}
+            onChange={(v) => onUpdateAnnotation(node.id, v)}
+          />
         </div>
 
         <div className="glass-card p-4">
@@ -129,7 +201,7 @@ function NodeDetailPanel({ node, onClose }: { node: SpreadNode; onClose: () => v
 export default function ReviewPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { rumorClues, spreadNodes, heatData, selectedNodeId, selectRumor, selectNode } = useAppStore();
+  const { rumorClues, spreadNodes, heatData, selectedNodeId, selectNode, updateNodeAnnotation, responseSuggestions } = useAppStore();
 
   const rumorIdFromUrl = searchParams.get('rumorId');
   const activeRumorId = rumorIdFromUrl || rumorClues[0]?.id || null;
@@ -158,12 +230,99 @@ export default function ReviewPage() {
     return Math.max(...activeNodes.map((n) => n.heatValue));
   }, [activeNodes]);
 
+  const annotationLabelMap: Record<NodeAnnotation, string> = {
+    none: '未标注',
+    collected: '已取证',
+    reported: '已投诉',
+    pending_verify: '待核验',
+  };
+
+  const riskLabelMap: Record<string, string> = { high: '高风险', medium: '中风险', low: '低风险' };
+  const statusLabelMap: Record<ActionStatus, string> = { pending: '未开始', in_progress: '进行中', completed: '已完成' };
+
+  const handleExportReport = useCallback(() => {
+    if (!activeRumor || !activeRumorId) return;
+    const suggestion = responseSuggestions[activeRumorId];
+    const completed = suggestion ? suggestion.actionItems.filter((a) => a.status === 'completed') : [];
+    const pending = suggestion ? suggestion.actionItems.filter((a) => a.status !== 'completed') : [];
+    const peakHeat = activeHeatData.length > 0 ? Math.max(...activeHeatData.map((d) => d.heat)) : 0;
+    const peakTime = activeHeatData.length > 0 ? activeHeatData.reduce((max, d) => (d.heat > max.heat ? d : max), activeHeatData[0]).time : 'N/A';
+
+    const lines: string[] = [];
+    lines.push(`【谣言线索复盘报告】`);
+    lines.push(`生成时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push(``);
+    lines.push(`=== 基本信息 ===`);
+    lines.push(`线索摘要：${activeRumor.summary}`);
+    lines.push(`风险等级：${riskLabelMap[activeRumor.riskLevel]}`);
+    lines.push(`来源平台：${activeRumor.sourcePlatform}`);
+    lines.push(`首次发现：${activeRumor.firstSeenAt}`);
+    lines.push(`累计转发：${activeRumor.repostCount.toLocaleString()}`);
+    lines.push(``);
+    lines.push(`=== 传播链 (${activeNodes.length}个节点) ===`);
+    activeNodes.forEach((node, idx) => {
+      lines.push(
+        `${idx + 1}. [${nodeTypeLabels[node.nodeType]}] ${node.title} | ${node.timestamp} | 热度 ${node.heatValue.toLocaleString()} | 标注:${annotationLabelMap[node.annotation]} | 链接: ${node.linkUrl}`
+      );
+    });
+    lines.push(``);
+    lines.push(`=== 热度变化 ===`);
+    lines.push(`峰值热度：${peakHeat.toLocaleString()}（${peakTime}）`);
+    activeHeatData.forEach((d) => {
+      lines.push(`  ${d.time}  热度 ${d.heat.toLocaleString()}${d.event ? `  — 事件: ${d.event}` : ''}`);
+    });
+    lines.push(``);
+    lines.push(`=== 已采取动作 (${completed.length}) ===`);
+    if (completed.length === 0) {
+      lines.push(`  （暂无）`);
+    } else {
+      completed.forEach((a) => lines.push(`  ✔ ${a.content}`));
+    }
+    lines.push(``);
+    lines.push(`=== 未完成待办 (${pending.length}) ===`);
+    if (pending.length === 0) {
+      lines.push(`  （全部完成）`);
+    } else {
+      pending.forEach((a) => lines.push(`  ☐ [${statusLabelMap[a.status]}] ${a.content}`));
+    }
+    lines.push(``);
+    lines.push(`—— 报告结束 ——`);
+
+    const content = lines.join('\n');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `复盘报告_${activeRumor.relatedProductName}_${activeRumor.firstSeenAt.slice(0, 10).replace(/-/g, '')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [activeRumor, activeRumorId, responseSuggestions, activeNodes, activeHeatData]);
+
+  const handleAnnotationChange = useCallback(
+    (nodeId: string, ann: NodeAnnotation) => {
+      if (!activeRumorId) return;
+      updateNodeAnnotation(activeRumorId, nodeId, ann);
+    },
+    [activeRumorId, updateNodeAnnotation]
+  );
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">路径复盘</h2>
           <p className="text-xs text-gray-500 mt-1">追溯谣言传播链路与关键节点</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportReport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-brand-green/15 text-brand-green text-xs font-medium hover:bg-brand-green/25 transition-colors"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            导出复盘报告
+          </button>
         </div>
       </div>
 
@@ -258,7 +417,7 @@ export default function ReviewPage() {
                       }`}
                       onClick={() => selectNode(isSelected ? null : node.id)}
                     >
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span
                           className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                           style={{
@@ -268,6 +427,7 @@ export default function ReviewPage() {
                         >
                           {nodeTypeLabels[node.nodeType]}
                         </span>
+                        <AnnotationBadge annotation={node.annotation} />
                         <span className="text-xs text-gray-400">{node.title}</span>
                       </div>
                       <p className="text-xs text-gray-500 line-clamp-2">{node.description}</p>
@@ -351,7 +511,14 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {selectedNode && <NodeDetailPanel node={selectedNode} onClose={() => selectNode(null)} />}
+      {selectedNode && (
+        <NodeDetailPanel
+          node={selectedNode}
+          rumorId={activeRumorId || ''}
+          onClose={() => selectNode(null)}
+          onUpdateAnnotation={handleAnnotationChange}
+        />
+      )}
     </div>
   );
 }

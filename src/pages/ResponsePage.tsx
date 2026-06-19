@@ -16,8 +16,36 @@ import {
   Star,
   AlertTriangle,
   Users,
+  Tag,
+  Flag,
+  SearchX,
+  GitBranch,
+  Eye,
+  UserRound,
+  Calendar,
+  ArrowRight,
 } from 'lucide-react';
-import type { ActionStatus } from '@/types';
+import type { ActionStatus, NodeAnnotation, SpreadNode, RiskLevel } from '@/types';
+
+const annotationOptions: { value: NodeAnnotation; label: string; icon: typeof CheckCircle2; color: string; bgColor: string }[] = [
+  { value: 'none', label: '未标注', icon: Tag, color: 'text-gray-500', bgColor: 'bg-gray-500/15' },
+  { value: 'collected', label: '已取证', icon: CheckCircle2, color: 'text-brand-green', bgColor: 'bg-brand-green/15' },
+  { value: 'reported', label: '已投诉', icon: Flag, color: 'text-brand-accent', bgColor: 'bg-brand-accent/15' },
+  { value: 'pending_verify', label: '待核验', icon: SearchX, color: 'text-brand-amber', bgColor: 'bg-brand-amber/15' },
+];
+
+const riskLabelMap: Record<RiskLevel, string> = { high: '高风险', medium: '中风险', low: '低风险' };
+
+function NodeAnnotationBadge({ annotation }: { annotation: NodeAnnotation }) {
+  const opt = annotationOptions.find((o) => o.value === annotation) || annotationOptions[0];
+  const Icon = opt.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${opt.bgColor} ${opt.color}`}>
+      <Icon className="w-2.5 h-2.5" />
+      {opt.label}
+    </span>
+  );
+}
 
 const priorityColors: Record<string, string> = {
   urgent: 'bg-brand-accent/20 text-brand-accent border-brand-accent/30',
@@ -40,7 +68,7 @@ const statusConfig: Record<string, { color: string; icon: typeof Circle; label: 
 export default function ResponsePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { rumorClues, responseSuggestions, updateActionItemStatus } = useAppStore();
+  const { rumorClues, spreadNodes, responseSuggestions, updateActionItemStatus, selectNode } = useAppStore();
   const [expandedScript, setExpandedScript] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -52,9 +80,20 @@ export default function ResponsePage() {
     return responseSuggestions[activeRumorId] || null;
   }, [activeRumorId, responseSuggestions]);
 
+  const activeNodes = useMemo(() => {
+    if (!activeRumorId) return [] as SpreadNode[];
+    return spreadNodes[activeRumorId] || [];
+  }, [activeRumorId, spreadNodes]);
+
   const activeRumor = useMemo(() => {
     return rumorClues.find((r) => r.id === activeRumorId) || null;
   }, [activeRumorId, rumorClues]);
+
+  const nodeAnnotationStats = useMemo(() => {
+    const stats = { collected: 0, reported: 0, pending_verify: 0, none: 0, total: activeNodes.length };
+    activeNodes.forEach((n) => { stats[n.annotation] = (stats[n.annotation] || 0) + 1; });
+    return stats;
+  }, [activeNodes]);
 
   const actionStats = useMemo(() => {
     if (!suggestion) return { pending: 0, in_progress: 0, completed: 0, total: 0 };
@@ -116,12 +155,46 @@ export default function ResponsePage() {
       {activeRumor && (
         <div className="glass-card p-4">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm text-gray-200 mb-1">{activeRumor.summary}</p>
-              <div className="flex items-center gap-3 text-xs text-gray-500">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-gray-200 mb-1.5">{activeRumor.summary}</p>
+              <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                 <span>来源: {activeRumor.sourcePlatform}</span>
                 <span>首次发现: {activeRumor.firstSeenAt}</span>
+                <span>风险: {riskLabelMap[activeRumor.riskLevel]}</span>
               </div>
+              {activeRumor.assignment && (
+                <div className="mt-3 p-2.5 rounded-lg bg-brand-dark/40 border border-brand-border/30 flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <UserRound className="w-3.5 h-3.5 text-brand-accent" />
+                    <span className="text-[10px] text-gray-500">负责人:</span>
+                    <div className="w-5 h-5 rounded-full bg-brand-accent/20 text-brand-accent text-[10px] flex items-center justify-center font-bold">
+                      {activeRumor.assignment.assignee.avatar}
+                    </div>
+                    <span className="text-xs text-white font-medium">{activeRumor.assignment.assignee.name}</span>
+                    <span className="text-[10px] text-gray-500">({activeRumor.assignment.assignee.role})</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-brand-amber" />
+                    <span className="text-[10px] text-gray-500">截止:</span>
+                    <span className="text-xs text-gray-200">{activeRumor.assignment.deadline}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <GitBranch className="w-3.5 h-3.5 text-brand-green" />
+                    <span className="text-[10px] text-gray-500">步骤:</span>
+                    <span className="text-xs text-brand-green font-medium">{activeRumor.assignment.currentStep}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 shrink-0">
+              <button
+                onClick={() => navigate(`/review?rumorId=${activeRumorId}`)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-brand-deep/40 text-blue-300 text-xs font-medium hover:bg-brand-deep/60 transition-colors justify-center"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                路径复盘
+                <ArrowRight className="w-3 h-3" />
+              </button>
             </div>
           </div>
         </div>
@@ -210,45 +283,115 @@ export default function ResponsePage() {
           </div>
 
           <div className="glass-card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-brand-green" />
+                传播节点标注（与证据材料联动）
+              </h3>
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className="text-brand-green">已取证: {nodeAnnotationStats.collected}</span>
+                <span className="text-brand-accent">已投诉: {nodeAnnotationStats.reported}</span>
+                <span className="text-brand-amber">待核验: {nodeAnnotationStats.pending_verify}</span>
+                <span className="text-gray-500">未标注: {nodeAnnotationStats.none}</span>
+                <span className="text-gray-500">/ {nodeAnnotationStats.total}</span>
+              </div>
+            </div>
+            <div className="space-y-2 mb-2">
+              {activeNodes.map((node, idx) => (
+                <div
+                  key={node.id}
+                  className="flex items-center gap-3 p-2.5 rounded-lg bg-brand-surface/30 border border-brand-border/30 hover:border-brand-border/60 transition-colors cursor-pointer group"
+                  onClick={() => {
+                    selectNode(node.id);
+                    navigate(`/review?rumorId=${activeRumorId}`);
+                  }}
+                >
+                  <div className="w-6 h-6 rounded-full bg-brand-navy/60 text-gray-300 text-[10px] flex items-center justify-center shrink-0 font-bold">
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-white font-medium truncate">{node.title}</span>
+                      <NodeAnnotationBadge annotation={node.annotation} />
+                    </div>
+                    <p className="text-[10px] text-gray-500 truncate">
+                      {node.timestamp} · 热度 {node.heatValue.toLocaleString()} · {node.description.slice(0, 30)}...
+                    </p>
+                  </div>
+                  <Eye className="w-3.5 h-3.5 text-gray-600 group-hover:text-blue-300 transition-colors shrink-0" />
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-500 flex items-center gap-1">
+              <Eye className="w-3 h-3" />
+              点击节点可跳转至路径复盘进行标注
+            </p>
+          </div>
+
+          <div className="glass-card p-5">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
               <FileText className="w-4 h-4 text-brand-green" />
               证据材料匹配
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              {suggestion.evidenceMaterials.map((material, index) => (
-                <div key={index} className="p-3 rounded-lg border border-brand-border/50 bg-brand-surface/30 hover:border-brand-border transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-white font-medium">{material.type}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${relevanceColors[material.relevance]}`}>
-                      {relevanceLabels[material.relevance]}
-                    </span>
+              {suggestion.evidenceMaterials.map((material, index) => {
+                const linkedNode = material.linkedNodeId
+                  ? activeNodes.find((n) => n.id === material.linkedNodeId)
+                  : null;
+                const autoAnnotate: NodeAnnotation = material.type.includes('截图') || material.type.includes('凭证') ? 'collected' : 'none';
+                const annotation = linkedNode?.annotation || autoAnnotate;
+                return (
+                  <div
+                    key={index}
+                    className="p-3 rounded-lg border border-brand-border/50 bg-brand-surface/30 hover:border-brand-border transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white font-medium">{material.type}</span>
+                        {(annotation !== 'none') && <NodeAnnotationBadge annotation={annotation} />}
+                      </div>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${relevanceColors[material.relevance]}`}>
+                        {relevanceLabels[material.relevance]}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 leading-relaxed mb-2">{material.description}</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-0.5">
+                        {material.relevance === 'high' && (
+                          <>
+                            <Star className="w-3 h-3 text-brand-green fill-brand-green" />
+                            <Star className="w-3 h-3 text-brand-green fill-brand-green" />
+                            <Star className="w-3 h-3 text-brand-green fill-brand-green" />
+                          </>
+                        )}
+                        {material.relevance === 'medium' && (
+                          <>
+                            <Star className="w-3 h-3 text-brand-amber fill-brand-amber" />
+                            <Star className="w-3 h-3 text-brand-amber fill-brand-amber" />
+                            <Star className="w-3 h-3 text-gray-600" />
+                          </>
+                        )}
+                        {material.relevance === 'low' && (
+                          <>
+                            <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
+                            <Star className="w-3 h-3 text-gray-600" />
+                            <Star className="w-3 h-3 text-gray-600" />
+                          </>
+                        )}
+                      </div>
+                      {linkedNode && (
+                        <button
+                          className="text-[10px] text-blue-300 hover:text-blue-200 flex items-center gap-1"
+                          onClick={() => { selectNode(linkedNode.id); navigate(`/review?rumorId=${activeRumorId}`); }}
+                        >
+                          <GitBranch className="w-2.5 h-2.5" />
+                          关联节点
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-400 leading-relaxed mb-2">{material.description}</p>
-                  <div className="flex items-center gap-0.5">
-                    {material.relevance === 'high' && (
-                      <>
-                        <Star className="w-3 h-3 text-brand-green fill-brand-green" />
-                        <Star className="w-3 h-3 text-brand-green fill-brand-green" />
-                        <Star className="w-3 h-3 text-brand-green fill-brand-green" />
-                      </>
-                    )}
-                    {material.relevance === 'medium' && (
-                      <>
-                        <Star className="w-3 h-3 text-brand-amber fill-brand-amber" />
-                        <Star className="w-3 h-3 text-brand-amber fill-brand-amber" />
-                        <Star className="w-3 h-3 text-gray-600" />
-                      </>
-                    )}
-                    {material.relevance === 'low' && (
-                      <>
-                        <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
-                        <Star className="w-3 h-3 text-gray-600" />
-                        <Star className="w-3 h-3 text-gray-600" />
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

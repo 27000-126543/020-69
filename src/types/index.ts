@@ -18,6 +18,20 @@ export type NodeType = 'small_circle' | 'marketing_account' | 'local_community' 
 export type ActionStatus = 'pending' | 'in_progress' | 'completed';
 export type Priority = 'urgent' | 'high' | 'normal';
 export type Relevance = 'high' | 'medium' | 'low';
+export type NodeAnnotation = 'none' | 'collected' | 'reported' | 'pending_verify';
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+}
+
+export interface TaskAssignment {
+  assignee: TeamMember;
+  deadline: string;
+  currentStep: string;
+}
 
 export interface RumorClue {
   id: string;
@@ -30,6 +44,7 @@ export interface RumorClue {
   brandId: string;
   relatedProductName: string;
   detail: string;
+  assignment?: TaskAssignment;
 }
 
 export interface AudienceProfile {
@@ -50,6 +65,7 @@ export interface SpreadNode {
   previousHeatValue: number;
   audienceProfile: AudienceProfile;
   description: string;
+  annotation?: NodeAnnotation;
 }
 
 export interface PlatformAccount {
@@ -68,6 +84,7 @@ export interface EvidenceMaterial {
   type: string;
   description: string;
   relevance: Relevance;
+  linkedNodeId?: string;
 }
 
 export interface ActionItem {
