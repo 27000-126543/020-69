@@ -174,7 +174,7 @@ export default function ReviewPage() {
             {rumorClues.map((clue) => (
               <button
                 key={clue.id}
-                onClick={() => selectRumor(clue.id)}
+                onClick={() => navigate(`/review?rumorId=${clue.id}`)}
                 className={`px-3 py-1.5 rounded text-xs transition-all duration-200 max-w-[280px] truncate ${
                   activeRumorId === clue.id
                     ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/40 font-medium'

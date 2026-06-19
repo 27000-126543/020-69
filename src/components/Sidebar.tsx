@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
-import { Eye, GitBranch, MessageSquareWarning, Shield } from 'lucide-react';
+import { Eye, GitBranch, MessageSquareWarning, Shield, Zap } from 'lucide-react';
 
 const navItems = [
+  { to: '/golden-hour', label: '黄金时间', icon: Zap },
   { to: '/monitor', label: '监测清单', icon: Eye },
   { to: '/review', label: '路径复盘', icon: GitBranch },
   { to: '/response', label: '回应建议', icon: MessageSquareWarning },
