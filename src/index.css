@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3a4e transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #2a3a4e;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #3a4a5e;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-surface text-gray-200;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-brand-card/80 backdrop-blur-sm border border-brand-border rounded-lg;
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px rgba(233, 69, 96, 0.15);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 20px rgba(83, 216, 168, 0.15);
+  }
+
+  .risk-high {
+    @apply border-l-4 border-l-brand-accent;
+  }
+
+  .risk-medium {
+    @apply border-l-4 border-l-brand-amber;
+  }
+
+  .risk-low {
+    @apply border-l-4 border-l-brand-deep;
+  }
+
+  .pulse-dot {
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+}

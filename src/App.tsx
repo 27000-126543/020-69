@@ -1,0 +1,20 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Layout from '@/components/Layout';
+import MonitorPage from '@/pages/MonitorPage';
+import ReviewPage from '@/pages/ReviewPage';
+import ResponsePage from '@/pages/ResponsePage';
+
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Navigate to="/monitor" replace />} />
+          <Route path="/monitor" element={<MonitorPage />} />
+          <Route path="/review" element={<ReviewPage />} />
+          <Route path="/response" element={<ResponsePage />} />
+        </Route>
+      </Routes>
+    </Router>
+  );
+}
