@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, collaboratorRoleLabels, defaultTeamMembers } from '@/store/useAppStore';
 import { categoryLabels } from '@/data/mockData';
 import {
   Zap,
@@ -21,8 +21,10 @@ import {
   ChevronRight,
   X,
   Save,
+  Plus,
+  Minus,
 } from 'lucide-react';
-import type { RumorClue, RiskLevel, TaskAssignment } from '@/types';
+import type { RumorClue, RiskLevel, TaskAssignment, CollaboratorRole, Collaborator } from '@/types';
 
 type ViewMode = 'priority' | 'schedule';
 
@@ -99,6 +101,20 @@ const defaultSteps = [
   '结案归档',
 ];
 
+const collaboratorRoleOptions: { value: CollaboratorRole; label: string }[] = [
+  { value: 'evidence', label: '证据采集' },
+  { value: 'platform', label: '平台对接' },
+  { value: 'legal', label: '法务支撑' },
+  { value: 'copywriter', label: '文案撰稿' },
+  { value: 'monitor', label: '舆情监测' },
+];
+
+function isUrgentDeadline(clue: RumorClue): boolean {
+  if (!clue.assignment) return false;
+  const hoursLeft = getHoursUntilDeadline(clue.assignment.deadline);
+  return hoursLeft < 6;
+}
+
 export default function GoldenHourPage() {
   const navigate = useNavigate();
   const { rumorClues, responseSuggestions, brands, teamMembers, assignRumorTask, updateRumorCurrentStep } = useAppStore();
@@ -109,7 +125,10 @@ export default function GoldenHourPage() {
     assigneeId: string;
     deadline: string;
     currentStep: string;
+    collaborators: Collaborator[];
   } | null>(null);
+  const [newCollaboratorMemberId, setNewCollaboratorMemberId] = useState<string>('');
+  const [newCollaboratorRole, setNewCollaboratorRole] = useState<CollaboratorRole>('evidence');
 
   const sortedClues = useMemo(() => {
     let filtered = rumorClues;
@@ -196,14 +215,18 @@ export default function GoldenHourPage() {
         assigneeId: clue.assignment.assignee.id,
         deadline: clue.assignment.deadline,
         currentStep: clue.assignment.currentStep,
+        collaborators: clue.assignment.collaborators || [],
       });
     } else {
       setEditForm({
         assigneeId: teamMembers[0]?.id || '',
         deadline: getDefaultDeadline(clue),
         currentStep: defaultSteps[0],
+        collaborators: [],
       });
     }
+    setNewCollaboratorMemberId('');
+    setNewCollaboratorRole('evidence');
   }, [teamMembers]);
 
   const saveEdit = useCallback(() => {
@@ -214,6 +237,7 @@ export default function GoldenHourPage() {
       assignee,
       deadline: editForm.deadline,
       currentStep: editForm.currentStep,
+      collaborators: editForm.collaborators,
     };
     assignRumorTask(editingClueId, assignment);
     setEditingClueId(null);
@@ -362,6 +386,7 @@ export default function GoldenHourPage() {
               const total = getTotalActions(clue.id);
               const progress = total > 0 ? (completed / total) * 100 : 0;
 
+              const urgent = isUrgentDeadline(clue);
               return (
                 <div
                   key={clue.id}
@@ -371,7 +396,7 @@ export default function GoldenHourPage() {
                       : clue.riskLevel === 'medium'
                       ? 'bg-brand-amber/5 border-brand-amber/20'
                       : 'bg-brand-surface/30 border-brand-border/50'
-                  }`}
+                  } ${urgent ? 'ring-1 ring-brand-accent/60 shadow-lg shadow-brand-accent/10' : ''}`}
                 >
                   <div className="flex items-start gap-4">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
@@ -494,6 +519,7 @@ export default function GoldenHourPage() {
                 const total = getTotalActions(clue.id);
                 const progress = total > 0 ? (completed / total) * 100 : 0;
                 const isEditing = editingClueId === clue.id;
+                const urgent = isUrgentDeadline(clue);
 
                 return (
                   <div
@@ -504,7 +530,7 @@ export default function GoldenHourPage() {
                         : clue.riskLevel === 'medium'
                         ? 'bg-brand-amber/5 border-brand-amber/20'
                         : 'bg-brand-surface/30 border-brand-border/50'
-                    }`}
+                    } ${urgent ? 'ring-1 ring-brand-accent/60 shadow-lg shadow-brand-accent/10' : ''}`}
                   >
                     <div className="flex items-start gap-4">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
@@ -579,6 +605,24 @@ export default function GoldenHourPage() {
                                 </div>
                               </div>
                             </div>
+                            {clue.assignment.collaborators && clue.assignment.collaborators.length > 0 && (
+                              <div className="mb-2 pt-2 border-t border-brand-border/30">
+                                <p className="text-[10px] text-gray-500 mb-1.5">协助人</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {clue.assignment.collaborators.map((c) => (
+                                    <span key={c.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-navy/50 border border-brand-border/40 text-[10px] text-gray-300">
+                                      <span className="w-4 h-4 rounded-full bg-brand-accent/20 text-brand-accent flex items-center justify-center text-[9px] font-bold">
+                                        {c.avatar}
+                                      </span>
+                                      {c.name}
+                                      <span className="px-1 py-0.5 rounded bg-brand-accent/15 text-brand-accent text-[9px]">
+                                        {collaboratorRoleLabels[c.collaborationRole] || c.collaborationRole}
+                                      </span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 text-[10px] text-gray-500">
                                 <span>首次发现: {clue.firstSeenAt}</span>
@@ -670,6 +714,76 @@ export default function GoldenHourPage() {
                                     <option key={s} value={s}>{s}</option>
                                   ))}
                                 </select>
+                              </div>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-brand-border/40">
+                              <p className="text-xs text-white font-semibold mb-2">协助人（按角色分工）</p>
+                              {editForm.collaborators.length > 0 ? (
+                                <div className="space-y-1.5 mb-2">
+                                  {editForm.collaborators.map((c, idx) => (
+                                    <div key={`${c.id}-${idx}`} className="flex items-center justify-between px-2 py-1.5 rounded bg-brand-surface/40 border border-brand-border/30">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-full bg-brand-accent/20 text-brand-accent flex items-center justify-center text-[10px] font-bold">
+                                          {c.avatar}
+                                        </span>
+                                        <span className="text-xs text-gray-200">{c.name}</span>
+                                        <span className="px-1.5 py-0.5 rounded bg-brand-accent/15 text-brand-accent text-[10px]">
+                                          {collaboratorRoleLabels[c.collaborationRole] || c.collaborationRole}
+                                        </span>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          const newCollabs = editForm.collaborators.filter((_, i) => i !== idx);
+                                          setEditForm({ ...editForm, collaborators: newCollabs });
+                                        }}
+                                        className="text-gray-500 hover:text-brand-accent transition-colors"
+                                      >
+                                        <Minus className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-gray-500 mb-2">暂无协助人</p>
+                              )}
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={newCollaboratorMemberId}
+                                  onChange={(e) => setNewCollaboratorMemberId(e.target.value)}
+                                  className="flex-1 bg-brand-surface/60 border border-brand-border/50 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-brand-accent/50"
+                                >
+                                  <option value="">选择成员...</option>
+                                  {teamMembers.map((m) => (
+                                    <option key={m.id} value={m.id}>{m.name} · {m.role}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={newCollaboratorRole}
+                                  onChange={(e) => setNewCollaboratorRole(e.target.value as CollaboratorRole)}
+                                  className="w-[110px] bg-brand-surface/60 border border-brand-border/50 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-brand-accent/50"
+                                >
+                                  {collaboratorRoleOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => {
+                                    if (!newCollaboratorMemberId) return;
+                                    const member = teamMembers.find((m) => m.id === newCollaboratorMemberId);
+                                    if (!member) return;
+                                    const newCollab: Collaborator = {
+                                      ...member,
+                                      collaborationRole: newCollaboratorRole,
+                                    };
+                                    setEditForm({ ...editForm, collaborators: [...editForm.collaborators, newCollab] });
+                                    setNewCollaboratorMemberId('');
+                                  }}
+                                  disabled={!newCollaboratorMemberId}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-brand-accent/20 text-brand-accent text-xs font-medium hover:bg-brand-accent/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  添加协助人
+                                </button>
                               </div>
                             </div>
                             <div className="flex justify-end mt-3">

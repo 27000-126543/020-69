@@ -4,6 +4,7 @@ import GoldenHourPage from '@/pages/GoldenHourPage';
 import MonitorPage from '@/pages/MonitorPage';
 import ReviewPage from '@/pages/ReviewPage';
 import ResponsePage from '@/pages/ResponsePage';
+import EvidenceLedgerPage from '@/pages/EvidenceLedgerPage';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/monitor" element={<MonitorPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/response" element={<ResponsePage />} />
+          <Route path="/evidence" element={<EvidenceLedgerPage />} />
         </Route>
       </Routes>
     </Router>

@@ -19,6 +19,17 @@ export type ActionStatus = 'pending' | 'in_progress' | 'completed';
 export type Priority = 'urgent' | 'high' | 'normal';
 export type Relevance = 'high' | 'medium' | 'low';
 export type NodeAnnotation = 'none' | 'collected' | 'reported' | 'pending_verify';
+export type CollaboratorRole = 'owner' | 'evidence' | 'platform' | 'legal' | 'copywriter' | 'monitor';
+export type ActionType =
+  | 'action_status_change'
+  | 'node_annotation_change'
+  | 'task_assignment'
+  | 'task_step_change'
+  | 'evidence_added'
+  | 'evidence_status_change'
+  | 'report_exported';
+export type MaterialKind = 'screenshot' | 'link' | 'report' | 'receipt' | 'video' | 'document' | 'other';
+export type MaterialAvailability = 'available' | 'pending_upload' | 'expired' | 'archived';
 
 export interface TeamMember {
   id: string;
@@ -27,10 +38,28 @@ export interface TeamMember {
   avatar: string;
 }
 
+export interface Collaborator extends TeamMember {
+  collaborationRole: CollaboratorRole;
+}
+
 export interface TaskAssignment {
   assignee: TeamMember;
   deadline: string;
   currentStep: string;
+  collaborators?: Collaborator[];
+}
+
+export interface ActionLog {
+  id: string;
+  rumorId: string;
+  actionType: ActionType;
+  operatorId: string;
+  operatorName: string;
+  timestamp: string;
+  description: string;
+  relatedItemId?: string;
+  previousValue?: string;
+  newValue?: string;
 }
 
 export interface RumorClue {
@@ -81,10 +110,17 @@ export interface CustomerServiceScript {
 }
 
 export interface EvidenceMaterial {
+  id: string;
   type: string;
   description: string;
   relevance: Relevance;
   linkedNodeId?: string;
+  kind: MaterialKind;
+  collectedBy?: string;
+  collectedByName?: string;
+  collectedAt?: string;
+  availability: MaterialAvailability;
+  fileUrl?: string;
 }
 
 export interface ActionItem {

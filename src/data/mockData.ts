@@ -695,7 +695,7 @@ export const mockSpreadNodes: Record<string, SpreadNode[]> = {
   ],
 };
 
-export const mockResponseSuggestions: Record<string, ResponseSuggestion> = {
+export const mockResponseSuggestions: Record<string, any> = {
   'rumor-1': {
     id: 'rs-1',
     rumorId: 'rumor-1',

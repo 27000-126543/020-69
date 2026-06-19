@@ -201,7 +201,7 @@ function NodeDetailPanel({
 export default function ReviewPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { rumorClues, spreadNodes, heatData, selectedNodeId, selectNode, updateNodeAnnotation, responseSuggestions } = useAppStore();
+  const { rumorClues, spreadNodes, heatData, selectedNodeId, selectNode, updateNodeAnnotation, responseSuggestions, actionLogs, addActionLog } = useAppStore();
 
   const rumorIdFromUrl = searchParams.get('rumorId');
   const activeRumorId = rumorIdFromUrl || rumorClues[0]?.id || null;
@@ -248,6 +248,45 @@ export default function ReviewPage() {
     const peakHeat = activeHeatData.length > 0 ? Math.max(...activeHeatData.map((d) => d.heat)) : 0;
     const peakTime = activeHeatData.length > 0 ? activeHeatData.reduce((max, d) => (d.heat > max.heat ? d : max), activeHeatData[0]).time : 'N/A';
 
+    const actionTypeLabelMap: Record<string, string> = {
+      action_status_change: '任务变更',
+      node_annotation_change: '节点标注',
+      task_assignment: '任务分配',
+      task_step_change: '步骤推进',
+      evidence_added: '证据采集',
+      evidence_status_change: '证据状态',
+      report_exported: '报告导出',
+    };
+
+    const kindLabelMap: Record<string, string> = {
+      screenshot: '截图',
+      link: '链接',
+      report: '检测报告',
+      receipt: '投诉回执',
+      video: '视频',
+      document: '文档',
+      other: '其他',
+    };
+
+    const availabilityLabelMap: Record<string, string> = {
+      available: '可用',
+      pending_upload: '待上传',
+      expired: '已过期',
+      archived: '已归档',
+    };
+
+    const relevanceLabelMap: Record<string, string> = {
+      high: '高',
+      medium: '中',
+      low: '低',
+    };
+
+    const rumorActionLogs = actionLogs
+      .filter((l) => l.rumorId === activeRumorId)
+      .sort((a, b) => new Date(a.timestamp.replace(' ', 'T')).getTime() - new Date(b.timestamp.replace(' ', 'T')).getTime());
+
+    const evidenceMaterials = suggestion?.evidenceMaterials || [];
+
     const lines: string[] = [];
     lines.push(`【谣言线索复盘报告】`);
     lines.push(`生成时间：${new Date().toLocaleString('zh-CN')}`);
@@ -258,6 +297,11 @@ export default function ReviewPage() {
     lines.push(`来源平台：${activeRumor.sourcePlatform}`);
     lines.push(`首次发现：${activeRumor.firstSeenAt}`);
     lines.push(`累计转发：${activeRumor.repostCount.toLocaleString()}`);
+    if (activeRumor.assignment) {
+      lines.push(`主负责人：${activeRumor.assignment.assignee.name}（${activeRumor.assignment.assignee.role}）`);
+      lines.push(`截止时间：${activeRumor.assignment.deadline}`);
+      lines.push(`当前步骤：${activeRumor.assignment.currentStep}`);
+    }
     lines.push(``);
     lines.push(`=== 传播链 (${activeNodes.length}个节点) ===`);
     activeNodes.forEach((node, idx) => {
@@ -265,6 +309,18 @@ export default function ReviewPage() {
         `${idx + 1}. [${nodeTypeLabels[node.nodeType]}] ${node.title} | ${node.timestamp} | 热度 ${node.heatValue.toLocaleString()} | 标注:${annotationLabelMap[node.annotation]} | 链接: ${node.linkUrl}`
       );
     });
+    lines.push(``);
+    lines.push(`=== 操作流水时间线 (${rumorActionLogs.length}条) ===`);
+    if (rumorActionLogs.length === 0) {
+      lines.push(`  （暂无操作记录）`);
+    } else {
+      rumorActionLogs.forEach((log) => {
+        const typeLabel = actionTypeLabelMap[log.actionType] || log.actionType;
+        lines.push(
+          `${log.timestamp} [${typeLabel}] ${log.operatorName} ${log.description}`
+        );
+      });
+    }
     lines.push(``);
     lines.push(`=== 热度变化 ===`);
     lines.push(`峰值热度：${peakHeat.toLocaleString()}（${peakTime}）`);
@@ -286,6 +342,20 @@ export default function ReviewPage() {
       pending.forEach((a) => lines.push(`  ☐ [${statusLabelMap[a.status]}] ${a.content}`));
     }
     lines.push(``);
+    lines.push(`=== 证据材料清单 (${evidenceMaterials.length}份) ===`);
+    if (evidenceMaterials.length === 0) {
+      lines.push(`  （暂无证据材料）`);
+    } else {
+      evidenceMaterials.forEach((m) => {
+        const kindLabel = kindLabelMap[m.kind] || m.kind;
+        const availLabel = availabilityLabelMap[m.availability] || m.availability;
+        const relLabel = relevanceLabelMap[m.relevance] || m.relevance;
+        lines.push(
+          `[${kindLabel}] ${m.type} | 关联度:${relLabel} | 可用状态:${availLabel} | 采集人:${m.collectedByName || '未知'} | 采集时间:${m.collectedAt || '未知'}`
+        );
+      });
+    }
+    lines.push(``);
     lines.push(`—— 报告结束 ——`);
 
     const content = lines.join('\n');
@@ -298,7 +368,17 @@ export default function ReviewPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [activeRumor, activeRumorId, responseSuggestions, activeNodes, activeHeatData]);
+
+    const operator = activeRumor.assignment?.assignee;
+    addActionLog({
+      rumorId: activeRumorId,
+      actionType: 'report_exported',
+      operatorId: operator?.id || 'system',
+      operatorName: operator?.name || '系统',
+      description: `导出复盘报告（${activeRumor.summary.slice(0, 20)}...）`,
+      relatedItemId: activeRumorId,
+    });
+  }, [activeRumor, activeRumorId, responseSuggestions, activeNodes, activeHeatData, actionLogs, addActionLog]);
 
   const handleAnnotationChange = useCallback(
     (nodeId: string, ann: NodeAnnotation) => {
